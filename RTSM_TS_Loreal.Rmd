@@ -1,0 +1,107 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+# Fetching data from Online resources 
+
+# using yahoo datasets
+
+# Required Packages
+packages = c('quantmod','forecast','tseries','FinTS','rugarch') 
+
+# Install all Packages with Dependencies
+install.packages(packages, dependencies = TRUE) 
+
+# Load all Packages
+lapply(packages, require, character.only = TRUE)
+```
+
+```{r}
+# 0.1. Fetch Single Stock/Index Data
+getSymbols(Symbols = 'OR.PA', 
+           src = 'yahoo', 
+           from = as.Date('2013-01-01'), 
+           to = as.Date('2023-12-31'),
+           periodicity = 'daily')
+
+or_price = na.omit(OR.PA$OR.PA.Adjusted) # Adjusted Closing Price
+class(or_price) # xts (Time-Series) Object
+
+plot(or_price) # Plotting the dataset
+```
+```{r}
+# step 1 - Testing for Stationary 
+# Method - Augmented Dickey-Fuller (ADF) | H0- No Stationary
+adf_test_or = adf.test(pr_price); adf_test_or
+
+```
+
+```{r}
+# Remodelling data
+or_ds = diff(or_price); plot(or_ds) # Loreal (First) Difference Time-Series
+or_ds = na.omit(or_ds)
+
+adf_test_or_ds = adf.test(or_ds); adf_test_or_ds  
+# Inference the first difference is stationary
+```
+```{r}
+# Step 2 - Testing for Auto correlation 
+# Method - Ljung-Box Test | H0 - No Autocorrelation
+lb_test_or_ds = Box.test(or_ds); lb_test_or_ds
+# Inference - The series is Auto correlated
+```
+
+```{r}
+# step 3 - ARIMA
+acf(or_ds) # ACF of Loreal Difference (Stationary) Series
+```
+
+```{r}
+pacf(or_ds) # PACF of Loreal Difference (Stationary) Series
+```
+
+```{r}
+# Modelling auto arima
+arma_pq_or_ds = auto.arima(or_ds); arma_pq_or_ds
+```
+
+```{r}
+# Forecasting through auto arima
+or_ds_fpq = forecast(arma_pq_or_ds, h = 200)
+plot(or_ds_fpq)
+```
+
+```{r}
+# Testing for Autocorrelation in residuals
+lb_test_arma_pq_or_ds = Box.test(or_ds_fpq$residuals); lb_test_arma_pq_or_ds
+# Inference - the residuals are not serially auto correlated
+```
+
+```{r}
+# Step 4 : Check for Heteroskedasticity :: ARCH LM Test
+# Test for Volatility Clustering or Heteroskedasticity: ARCH Test
+or_arch_test = ArchTest(or_ds_fpq$residuals, lags = 20) # H0: No ARCH Effects
+or_arch_test 
+# Inference - difference Series is Heteroskedastic (Has Volatility Clustering)
+```
+
+```{r}
+# Step 5b : Model for Heteroskedasticity
+
+garch_model2 = ugarchspec(variance.model = list(model = 'sGARCH', garchOrder = c(1,1)), mean.model = list(armaOrder = c(0,1), include.mean = FALSE))
+lt_ret_garch2 = ugarchfit(garch_model2, data = or_ds); lt_ret_garch2
+
+lt_ret_garch_forecast2 = ugarchforecast(lt_ret_garch2, n.ahead = 200); lt_ret_garch_forecast2
+
+```
+
+```{r}
+plot(lt_ret_garch_forecast2,which=1)
+```
+
+```{r}
+plot(lt_ret_garch_forecast2,which=3)
+```
